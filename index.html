@@ -433,7 +433,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   btnPiP.addEventListener('click', async ()=>{
     // ★ホーム画面アプリ化ではPiP制限があるので案内にする
     if (isStandalone()) {
-      alert('ホーム画面アプリ版ではPiPが制限されます。\nPiPしたい時はSafariで同じURLを開いて、そこでPiPを押してね。\n（Safari側のブックマークから開くのが確実）');
+      alert('ホーム画面アプリ版ではPiPが制限されます。\\nPiPしたい時はSafariで同じURLを開いて、そこでPiPを押してね。\\n（Safari側のブックマークから開くのが確実）');
       return;
     }
 
@@ -506,8 +506,9 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   chkFollow.addEventListener('change', ()=> highlightCurrent(true));
 
+  // ✅ 再生速度ボタン修正版（rate未定義＆boolean渡しを解消）
   document.querySelectorAll('.spd').forEach(b=>{
-    b.addEventListener('click', ()=> setSpeed(Number(b.dataset.rate)));
+    b.addEventListener('click', () => setSpeed(Number(b.dataset.rate)));
   });
   setSpeed(1.0);
 
