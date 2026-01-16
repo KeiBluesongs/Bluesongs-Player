@@ -442,14 +442,14 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   function selectAndPlay(i){
     const wasPiP = isPiPActive();
 
-    // macOS Safariでは「PiPが拡大/崩れる」対策として一度抜ける
+    // macOS Safariだけ：PiP表示が拡大/崩れるのを避けるため、一度PiPを抜けて入り直す
     if (wasPiP && isMacDesktop()) tryExitPiP();
 
     prepareIndex(i);
     playNow();
 
-    // 可能ならPiPへ戻す（iPhone/iPadは「抜けずに入り直しだけ」）
-    if (wasPiP) {
+    // macOS Safariだけ：PiPに戻す（iPhone/iPadはPiP継続を優先して触らない）
+    if (wasPiP && isMacDesktop()){
       tryEnterPiP();
       const once = () => {
         vid.removeEventListener('playing', once);
@@ -467,14 +467,12 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (wasPiP && isMacDesktop()) tryExitPiP();
 
     if (pos < 0){
-      prepareIndex(order[0]); playNow();
-    } else if (pos+1 < order.length){
-      prepareIndex(order[pos+1]); playNow();
-    } else if (chkLoop.checked){
-      prepareIndex(order[0]); playNow();
+      prepareIndex(order[0]); playNow(); return;
     }
+    if (pos+1 < order.length){ prepareIndex(order[pos+1]); playNow(); }
+    else if (chkLoop.checked){ prepareIndex(order[0]); playNow(); }
 
-    if (wasPiP){
+    if (wasPiP && isMacDesktop()){
       tryEnterPiP();
       const once = () => {
         vid.removeEventListener('playing', once);
@@ -500,14 +498,12 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (wasPiP && isMacDesktop()) tryExitPiP();
 
     if (pos < 0){
-      prepareIndex(order[0]); playNow();
-    } else if (pos-1 >= 0){
-      prepareIndex(order[pos-1]); playNow();
-    } else if (chkLoop.checked){
-      prepareIndex(order[order.length-1]); playNow();
+      prepareIndex(order[0]); playNow(); return;
     }
+    if (pos-1 >= 0){ prepareIndex(order[pos-1]); playNow(); }
+    else if (chkLoop.checked){ prepareIndex(order[order.length-1]); playNow(); }
 
-    if (wasPiP){
+    if (wasPiP && isMacDesktop()){
       tryEnterPiP();
       const once = () => {
         vid.removeEventListener('playing', once);
@@ -526,73 +522,14 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       vid.addEventListener('playing', once);
     }
   }
-
-  // iPhoneでPiP中にSafariがバックグラウンドだと「ended後の次曲再生」が止まることがある対策：
-  // 1) ended時にページが隠れていたら「保留」にして、Safariに戻ったら再開
-  // 2) さらに、動画の終わり直前に次へ切替を先行して試す（PiPが閉じる前に切替できれば継続しやすい）
-  let pendingAutoNext = false;
 
   function onEnded(){
     if (chkLoopOne.checked) return;
-    if (!chkAutoNext.checked) return;
-
-    if (document.hidden){
-      pendingAutoNext = true;
-      return;
-    }
-    next();
+    if (chkAutoNext.checked) next();
   }
 
   vid.addEventListener('ended', onEnded);
   aud.addEventListener('ended', onEnded);
-
-  // Safariに戻ってきたら、保留していた「次へ」を再開
-  document.addEventListener('visibilitychange', ()=>{
-    if (!document.hidden && pendingAutoNext){
-      pendingAutoNext = false;
-      next();
-    }
-  });
-
-  // 終わり直前に「次へ」を先行して切替（iPhoneでPiPが閉じる前に切替できれば継続しやすい）
-  const PREEMPT_SEC = 0.15; // この秒数だけ手前で切替（小さすぎると間に合わない）
-  let preemptArmed = true;
-
-  function resetPreempt(){
-    preemptArmed = true;
-  }
-  function maybePreemptAutoNext(){
-    if (!preemptArmed) return;
-    if (!chkAutoNext.checked) return;
-    if (chkLoopOne.checked) return;
-    if (!order.length) return;
-    if (nowIndex == null) return;
-    if (vid.style.display === 'none') return;
-    if (vid.paused) return;
-
-    const d = vid.duration;
-    if (!isFinite(d) || d <= 0) return;
-
-    const remain = d - vid.currentTime;
-    if (remain <= PREEMPT_SEC && remain > 0){
-      preemptArmed = false;
-
-      // ページが見えていなくても「切替だけ」試す（PiP維持を狙う）
-      // 失敗しても ended/visibilitychange でフォールバックする。
-      if (pos < 0){
-        prepareIndex(order[0]); playNow();
-      } else if (pos+1 < order.length){
-        prepareIndex(order[pos+1]); playNow();
-      } else if (chkLoop.checked){
-        prepareIndex(order[0]); playNow();
-      }
-    }
-  }
-
-  vid.addEventListener('timeupdate', maybePreemptAutoNext);
-  vid.addEventListener('loadedmetadata', resetPreempt);
-  vid.addEventListener('playing', resetPreempt);
-
 
   btnPlay.addEventListener('click', ()=>{
     if (nowIndex == null){
