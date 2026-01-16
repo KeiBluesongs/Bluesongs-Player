@@ -389,6 +389,12 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   }
 
   // --- PiPまわり：Mac Safariで「次へ」に行くとPiPが拡大/崩れる対策（手動操作時だけ） ---
+  const UA = navigator.userAgent || '';
+  function isMacDesktop(){
+    // iPhone/iPadは "Mobile" が入る。macOS Safariは入らない。
+    return /Macintosh/.test(UA) && !/Mobile/.test(UA);
+  }
+
   function hasWebkitPiP(){
     return (typeof vid.webkitSetPresentationMode === 'function');
   }
@@ -431,18 +437,20 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   }
 
   // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
+
+  // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
   function selectAndPlay(i){
     const wasPiP = isPiPActive();
-    if (wasPiP) tryExitPiP();
+
+    // macOS Safariでは「PiPが拡大/崩れる」対策として一度抜ける
+    if (wasPiP && isMacDesktop()) tryExitPiP();
 
     prepareIndex(i);
     playNow();
 
-    // PiP中に次へ/リスト移動した場合、サイズ崩れを避けるため「入り直し」を試す
+    // 可能ならPiPへ戻す（iPhone/iPadは「抜けずに入り直しだけ」）
     if (wasPiP) {
-      // すぐ試す（ユーザー操作の流れを維持）
       tryEnterPiP();
-      // 再生開始後にももう一回だけ保険（環境によってはこっちで入れる）
       const once = () => {
         vid.removeEventListener('playing', once);
         if (!isPiPActive()) tryEnterPiP();
@@ -450,11 +458,13 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       vid.addEventListener('playing', once);
     }
   }
+
+  }
   function next(){
     if (!order.length) return;
 
     const wasPiP = isPiPActive();
-    if (wasPiP) tryExitPiP();
+    if (wasPiP && isMacDesktop()) tryExitPiP();
 
     if (pos < 0){
       prepareIndex(order[0]); playNow();
@@ -473,11 +483,21 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       vid.addEventListener('playing', once);
     }
   }
+
+    if (wasPiP){
+      tryEnterPiP();
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
+  }
   function prev(){
     if (!order.length) return;
 
     const wasPiP = isPiPActive();
-    if (wasPiP) tryExitPiP();
+    if (wasPiP && isMacDesktop()) tryExitPiP();
 
     if (pos < 0){
       prepareIndex(order[0]); playNow();
@@ -497,12 +517,82 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     }
   }
 
+    if (wasPiP){
+      tryEnterPiP();
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
+  }
+
+  // iPhoneでPiP中にSafariがバックグラウンドだと「ended後の次曲再生」が止まることがある対策：
+  // 1) ended時にページが隠れていたら「保留」にして、Safariに戻ったら再開
+  // 2) さらに、動画の終わり直前に次へ切替を先行して試す（PiPが閉じる前に切替できれば継続しやすい）
+  let pendingAutoNext = false;
+
   function onEnded(){
     if (chkLoopOne.checked) return;
-    if (chkAutoNext.checked) next();
+    if (!chkAutoNext.checked) return;
+
+    if (document.hidden){
+      pendingAutoNext = true;
+      return;
+    }
+    next();
   }
+
   vid.addEventListener('ended', onEnded);
   aud.addEventListener('ended', onEnded);
+
+  // Safariに戻ってきたら、保留していた「次へ」を再開
+  document.addEventListener('visibilitychange', ()=>{
+    if (!document.hidden && pendingAutoNext){
+      pendingAutoNext = false;
+      next();
+    }
+  });
+
+  // 終わり直前に「次へ」を先行して切替（iPhoneでPiPが閉じる前に切替できれば継続しやすい）
+  const PREEMPT_SEC = 0.15; // この秒数だけ手前で切替（小さすぎると間に合わない）
+  let preemptArmed = true;
+
+  function resetPreempt(){
+    preemptArmed = true;
+  }
+  function maybePreemptAutoNext(){
+    if (!preemptArmed) return;
+    if (!chkAutoNext.checked) return;
+    if (chkLoopOne.checked) return;
+    if (!order.length) return;
+    if (nowIndex == null) return;
+    if (vid.style.display === 'none') return;
+    if (vid.paused) return;
+
+    const d = vid.duration;
+    if (!isFinite(d) || d <= 0) return;
+
+    const remain = d - vid.currentTime;
+    if (remain <= PREEMPT_SEC && remain > 0){
+      preemptArmed = false;
+
+      // ページが見えていなくても「切替だけ」試す（PiP維持を狙う）
+      // 失敗しても ended/visibilitychange でフォールバックする。
+      if (pos < 0){
+        prepareIndex(order[0]); playNow();
+      } else if (pos+1 < order.length){
+        prepareIndex(order[pos+1]); playNow();
+      } else if (chkLoop.checked){
+        prepareIndex(order[0]); playNow();
+      }
+    }
+  }
+
+  vid.addEventListener('timeupdate', maybePreemptAutoNext);
+  vid.addEventListener('loadedmetadata', resetPreempt);
+  vid.addEventListener('playing', resetPreempt);
+
 
   btnPlay.addEventListener('click', ()=>{
     if (nowIndex == null){
