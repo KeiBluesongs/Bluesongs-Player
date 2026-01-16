@@ -107,7 +107,8 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     ※選択直後は自動再生しません（再生ボタンで開始）。<br>
     ※検索でヒットした曲だけが「次へ/シャッフル/ループ（キュー）」の対象。検索を消すと全曲に戻る。<br>
     ※「連続再生OFF」なら曲が終わっても次へ進みません。<br>
-    ※「1曲ループ」は media要素のloop機能で安定動作します。
+    ※「1曲ループ」は media要素のloop機能で安定動作します。<br>
+    ※ホーム画面アプリ化（standalone）ではPiPが制限されることがあります。PiPしたい時はSafariで同じURLを開いてください。
   </small>
 </div>
 
@@ -149,6 +150,12 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   const extsOK = new Set(['mp4','m4v','mov','mp3','m4a']);
   const videoExts = new Set(['mp4','m4v','mov']);
+
+  // ★ホーム画面アプリ（standalone）判定
+  function isStandalone() {
+    return (window.navigator.standalone === true) ||
+           (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
 
   function closePanelOnPlay(){
     if (panel) panel.open = false;
@@ -217,13 +224,13 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     });
   }
 
-  // ★1曲ループをmedia要素へ反映（安定版）
+  // 1曲ループをmedia要素へ反映（安定版）
   function applyLoopOneToPlayers(){
     vid.loop = chkLoopOne.checked;
     aud.loop = chkLoopOne.checked;
   }
 
-  // ★ループの排他（どちらか片方だけ）＋反映
+  // ループの排他（どちらか片方だけ）＋反映
   chkLoopOne.addEventListener('change', () => {
     if (chkLoopOne.checked) chkLoop.checked = false;
     applyLoopOneToPlayers();
@@ -232,7 +239,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (chkLoop.checked) chkLoopOne.checked = false;
     applyLoopOneToPlayers();
   });
-  // 初期反映
   applyLoopOneToPlayers();
 
   function showPlayerFor(ext){
@@ -247,11 +253,27 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     // 曲切替時もloop状態を確実に反映
     applyLoopOneToPlayers();
 
-    const pipCapable = isVideo && (
+    // ★PiPはstandaloneでは案内運用にする（ボタンは押せるようにしておく）
+    if (!isVideo) {
+      btnPiP.disabled = true;           // 音声はPiPなし
+      btnPiP.textContent = 'PiP（動画）';
+      return player;
+    }
+
+    if (isStandalone()) {
+      // standaloneではOS制限で失敗しやすいので“案内ボタン”として活かす
+      btnPiP.disabled = false;
+      btnPiP.textContent = 'PiP（Safari）';
+      return player;
+    }
+
+    // Safari通常タブなら従来どおり判定
+    const pipCapable = (
       (document.pictureInPictureEnabled && typeof vid.requestPictureInPicture === 'function') ||
       (typeof vid.webkitSetPresentationMode === 'function')
     );
     btnPiP.disabled = !pipCapable;
+    btnPiP.textContent = 'PiP（動画）';
 
     return player;
   }
@@ -372,7 +394,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       prepareIndex(order[0]); playNow(); return;
     }
     if (pos+1 < order.length){ prepareIndex(order[pos+1]); playNow(); }
-    else if (chkLoop.checked){ prepareIndex(order[0]); playNow(); }   // ループ（キュー）
+    else if (chkLoop.checked){ prepareIndex(order[0]); playNow(); }
   }
 
   function prev(){
@@ -381,15 +403,11 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       prepareIndex(order[0]); playNow(); return;
     }
     if (pos-1 >= 0){ prepareIndex(order[pos-1]); playNow(); }
-    else if (chkLoop.checked){ prepareIndex(order[order.length-1]); playNow(); }  // ループ（キュー）
+    else if (chkLoop.checked){ prepareIndex(order[order.length-1]); playNow(); }
   }
 
-  // ended：
   function onEnded(){
-    // 1曲ループはmedia要素(loop)に任せるので、ここでは何もしない
     if (chkLoopOne.checked) return;
-
-    // 連続再生ONのときだけ次へ
     if (chkAutoNext.checked) next();
   }
   vid.addEventListener('ended', onEnded);
@@ -413,6 +431,12 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   btnPrev.addEventListener('click', prev);
 
   btnPiP.addEventListener('click', async ()=>{
+    // ★ホーム画面アプリ化ではPiP制限があるので案内にする
+    if (isStandalone()) {
+      alert('ホーム画面アプリ版ではPiPが制限されます。\nPiPしたい時はSafariで同じURLを開いて、そこでPiPを押してね。\n（Safari側のブックマークから開くのが確実）');
+      return;
+    }
+
     try{
       if (document.pictureInPictureEnabled && vid.requestPictureInPicture){
         await vid.requestPictureInPicture(); return;
