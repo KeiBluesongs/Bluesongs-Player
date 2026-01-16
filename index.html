@@ -379,6 +379,8 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
     const player = showPlayerFor(ext);
     player.src = url;
+    // iOS Safariでフォルダ選択時に「プレイヤーの▶︎」が別の項目を再生しがちな対策：明示的にロード
+    try{ player.load(); }catch(_){ }
 
     updateStatus();
     applyFilterUI();
@@ -406,9 +408,9 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     return (document.pictureInPictureElement === vid) ||
            (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture');
   }
+
   function tryExitPiP(){
     try{
-      // Safariはwebkit系が同期的に効くことが多い
       if (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture'){
         vid.webkitSetPresentationMode('inline');
         return true;
@@ -420,6 +422,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     }catch(_){}
     return false;
   }
+
   function tryEnterPiP(){
     // iPhoneホーム画面版は案内運用なのでここでは触らない
     if (isStandalone()) return false;
@@ -432,32 +435,49 @@ details.ctrlpanel[open]{padding-bottom:12px;}
         vid.webkitSetPresentationMode('picture-in-picture');
         return true;
       }
+      if (document.pictureInPictureEnabled && vid.requestPictureInPicture){
+        vid.requestPictureInPicture().catch(()=>{});
+        return true;
+      }
+    }catch(_){}
+    return false;
+  }
 
   // iPhone/iPad SafariのPiPで「次へ」時に拡大表示（クロップ）になることがある対策（実験）
-  // PiPを閉じずに、PiPモードを“再宣言”して表示をリセットできる場合がある。
+  // 重要：iPhone側では「PiPを閉じない」（バックグラウンド連続再生が死にやすいので）
   let pendingPiPRefresh = false;
 
   function markPiPRefresh(){
-    // iPhone/iPad側のみ（Macは別対策）
-    if (!isMacDesktop()) pendingPiPRefresh = true;
+    pendingPiPRefresh = true;
+  }
+
+  function layoutNudge(){
+    // “ピンチで直る”の再現を狙って、極小のスタイル変更でリレイアウトを誘発（見た目はほぼ変わらない）
+    const t = vid.style.transform;
+    vid.style.transform = 'scale(0.9999)';
+    requestAnimationFrame(()=>{ vid.style.transform = t || ''; });
   }
 
   function refreshPiPIfNeeded(){
     if (!pendingPiPRefresh) return;
     pendingPiPRefresh = false;
 
+    // iPhone/iPad側だけ
+    if (isMacDesktop()) return;
+
     // PiP中かつwebkit系が使える時だけ試す
     if (!hasWebkitPiP()) return;
     if (vid.webkitPresentationMode !== 'picture-in-picture') return;
 
     try{
-      // “picture-in-picture” をもう一度セットして表示の崩れを戻せることがある
+      // PiPモードを“再宣言”して表示崩れが戻ることがある
       vid.webkitSetPresentationMode('picture-in-picture');
-      // 保険：メタデータ反映の後にもう一回
+      layoutNudge();
       setTimeout(()=> {
         try{
           if (vid.webkitPresentationMode === 'picture-in-picture'){
             vid.webkitSetPresentationMode('picture-in-picture');
+            layoutNudge();
           }
         }catch(_){}
       }, 80);
@@ -477,18 +497,10 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   // 再生が始まったタイミングでも念のため
   vid.addEventListener('playing', refreshPiPIfNeeded);
-      if (document.pictureInPictureEnabled && vid.requestPictureInPicture){
-        vid.requestPictureInPicture().catch(()=>{});
-        return true;
-      }
-    }catch(_){}
-    return false;
-  }
 
   // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
   function selectAndPlay(i){
     const wasPiP = isPiPActive();
-
     if (wasPiP && !isMacDesktop()) markPiPRefresh();
 
     // macOS Safariだけ：PiP表示が拡大/崩れるのを避けるため、一度PiPを抜けて入り直す
@@ -497,7 +509,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     prepareIndex(i);
     playNow();
 
-    // macOS Safariだけ：PiPに戻す（iPhone/iPadはPiP継続を優先して触らない）
+    // macOS Safariだけ：PiPに戻す
     if (wasPiP && isMacDesktop()){
       tryEnterPiP();
       const once = () => {
@@ -512,7 +524,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (!order.length) return;
 
     const wasPiP = isPiPActive();
-
     if (wasPiP && !isMacDesktop()) markPiPRefresh();
     if (wasPiP && isMacDesktop()) tryExitPiP();
 
@@ -536,7 +547,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (!order.length) return;
 
     const wasPiP = isPiPActive();
-
     if (wasPiP && !isMacDesktop()) markPiPRefresh();
     if (wasPiP && isMacDesktop()) tryExitPiP();
 
