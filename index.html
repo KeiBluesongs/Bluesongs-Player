@@ -104,7 +104,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   <ul id="plist"></ul>
   <small>
-    ※選択直後は自動再生しません（再生ボタンで開始）。<br>
+    ※ファイル選択直後は自動再生しません（再生ボタンで開始）。リストから選ぶと即再生します。<br>
     ※検索でヒットした曲だけが「次へ/シャッフル/ループ（キュー）」の対象。検索を消すと全曲に戻る。<br>
     ※「連続再生OFF」なら曲が終わっても次へ進みません。<br>
     ※「1曲ループ」は media要素のloop機能で安定動作します。<br>
@@ -355,7 +355,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       const li = document.createElement('li');
       li.textContent = f.webkitRelativePath ? f.webkitRelativePath : f.name;
       li.dataset.i = String(i);
-      li.addEventListener('click', ()=> prepareIndex(i));
+      li.addEventListener('click', ()=> selectAndPlay(i));
       plist.appendChild(li);
     });
     applyFilterUI();
@@ -388,20 +388,117 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     player.play().catch(()=>{});
   }
 
+  // --- PiPまわり：Mac Safariで「次へ」に行くとPiPが拡大/崩れる対策（手動操作時だけ） ---
+  function hasWebkitPiP(){
+    return (typeof vid.webkitSetPresentationMode === 'function');
+  }
+  function isPiPActive(){
+    return (document.pictureInPictureElement === vid) ||
+           (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture');
+  }
+  function tryExitPiP(){
+    try{
+      // Safariはwebkit系が同期的に効くことが多い
+      if (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture'){
+        vid.webkitSetPresentationMode('inline');
+        return true;
+      }
+      if (document.pictureInPictureElement){
+        document.exitPictureInPicture?.().catch(()=>{});
+        return true;
+      }
+    }catch(_){}
+    return false;
+  }
+  function tryEnterPiP(){
+    // iPhoneホーム画面版は案内運用なのでここでは触らない
+    if (isStandalone()) return false;
+    // 動画以外は対象外
+    if (vid.style.display === 'none') return false;
+
+    try{
+      // Safariはwebkit系を優先（同期的に動きやすい）
+      if (hasWebkitPiP()){
+        vid.webkitSetPresentationMode('picture-in-picture');
+        return true;
+      }
+      if (document.pictureInPictureEnabled && vid.requestPictureInPicture){
+        vid.requestPictureInPicture().catch(()=>{});
+        return true;
+      }
+    }catch(_){}
+    return false;
+  }
+
+  // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
+  function selectAndPlay(i){
+    const wasPiP = isPiPActive();
+    if (wasPiP) tryExitPiP();
+
+    prepareIndex(i);
+    playNow();
+
+    // PiP中に次へ/リスト移動した場合、サイズ崩れを避けるため「入り直し」を試す
+    if (wasPiP) {
+      // すぐ試す（ユーザー操作の流れを維持）
+      tryEnterPiP();
+      // 再生開始後にももう一回だけ保険（環境によってはこっちで入れる）
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
+  }
   function next(){
     if (!order.length) return;
+
+    const wasPiP = isPiPActive();
+    if (wasPiP) tryExitPiP();
+
     if (pos < 0){
-      prepareIndex(order[0]); playNow(); return;
+      prepareIndex(order[0]); playNow();
+    } else if (pos+1 < order.length){
+      prepareIndex(order[pos+1]); playNow();
+    } else if (chkLoop.checked){
+      prepareIndex(order[0]); playNow();
     }
+
+    if (wasPiP){
+      tryEnterPiP();
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
+  }
     if (pos+1 < order.length){ prepareIndex(order[pos+1]); playNow(); }
     else if (chkLoop.checked){ prepareIndex(order[0]); playNow(); }
   }
-
   function prev(){
     if (!order.length) return;
+
+    const wasPiP = isPiPActive();
+    if (wasPiP) tryExitPiP();
+
     if (pos < 0){
-      prepareIndex(order[0]); playNow(); return;
+      prepareIndex(order[0]); playNow();
+    } else if (pos-1 >= 0){
+      prepareIndex(order[pos-1]); playNow();
+    } else if (chkLoop.checked){
+      prepareIndex(order[order.length-1]); playNow();
     }
+
+    if (wasPiP){
+      tryEnterPiP();
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
+  }
     if (pos-1 >= 0){ prepareIndex(order[pos-1]); playNow(); }
     else if (chkLoop.checked){ prepareIndex(order[order.length-1]); playNow(); }
   }
