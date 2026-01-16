@@ -437,8 +437,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   }
 
   // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
-
-  // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
   function selectAndPlay(i){
     const wasPiP = isPiPActive();
 
@@ -459,7 +457,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     }
   }
 
-  }
   function next(){
     if (!order.length) return;
 
@@ -482,15 +479,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     }
   }
 
-    if (wasPiP){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
-  }
   function prev(){
     if (!order.length) return;
 
@@ -513,17 +501,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     }
   }
 
-    if (wasPiP){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
-  }
-
-  function onEnded(){
+function onEnded(){
     if (chkLoopOne.checked) return;
     if (chkAutoNext.checked) next();
   }
