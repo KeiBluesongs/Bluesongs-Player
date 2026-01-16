@@ -473,9 +473,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       vid.addEventListener('playing', once);
     }
   }
-    if (pos+1 < order.length){ prepareIndex(order[pos+1]); playNow(); }
-    else if (chkLoop.checked){ prepareIndex(order[0]); playNow(); }
-  }
   function prev(){
     if (!order.length) return;
 
@@ -498,9 +495,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       };
       vid.addEventListener('playing', once);
     }
-  }
-    if (pos-1 >= 0){ prepareIndex(order[pos-1]); playNow(); }
-    else if (chkLoop.checked){ prepareIndex(order[order.length-1]); playNow(); }
   }
 
   function onEnded(){
