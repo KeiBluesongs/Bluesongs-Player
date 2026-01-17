@@ -14,7 +14,9 @@ input[type=file]{display:none}
 input[type=text]{min-width:220px;flex:1}
 small{opacity:.8}
 video,audio{width:100%;margin-top:10px;background:#000}
-video{object-fit:contain;object-position:center;background:#000}
+video{display:block;width:100%;height:auto;object-fit:contain;object-position:center;background:#000}
+video:fullscreen{width:100vw;height:100vh;margin:0;object-fit:contain}
+video:-webkit-full-screen{width:100vw;height:100vh;margin:0;object-fit:contain}
 #status{margin-top:8px;font-size:14px;opacity:.85}
 #plist{
   list-style:none;padding:0;margin:10px 0 0 0;border:1px solid #222;border-radius:10px;overflow:auto;
@@ -251,6 +253,9 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     // iPhone/iPadは "Mobile" が入る。macOS Safariは入らない。
     return /Macintosh/.test(UA) && !/Mobile/.test(UA);
   }
+  function isIOSDevice(){
+    return /iPhone|iPad|iPod/.test(UA) || (/Macintosh/.test(UA) && 'ontouchend' in document);
+  }
   function hasWebkitPiP(){
     return (typeof vid.webkitSetPresentationMode === 'function');
   }
@@ -288,14 +293,22 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     return false;
   }
 
-  // iPhoneの「次へでPiPが拡大」対策（実験）：ユーザー操作で切替した時だけ、軽いレイアウト刺激を入れる
+  // iPhoneの「次へでPiPが拡大」対策：
+  // PiP中にsrcを差し替えると、iOS SafariがPiPの描画サイズを更新しないことがある。
+  // loadedmetadata/playingのタイミングで軽い再描画刺激＋PiP再宣言を行い、表示バグを回避する。
   let pendingPiPRefresh = false;
   function markPiPRefresh(){ pendingPiPRefresh = true; }
-  function layoutNudge(){
-    // “ピンチで直る”の再現を狙って、極小のスタイル変更でリレイアウトを誘発（見た目はほぼ変わらない）
-    const t = vid.style.transform;
-    vid.style.transform = 'scale(0.9999)';
-    requestAnimationFrame(()=>{ vid.style.transform = t || ''; });
+  function forceVideoReflow(){
+    if (!isIOSDevice()) return;
+    // “ピンチで直る”の再現を狙って、widthの微変更でリレイアウトを誘発
+    const w = vid.style.width;
+    vid.style.width = '99.9%';
+    void vid.offsetWidth; // force reflow
+    vid.style.width = w || '100%';
+  }
+  function scheduleVideoReflow(delay){
+    if (!isIOSDevice()) return;
+    setTimeout(forceVideoReflow, delay);
   }
   function refreshPiPIfNeeded(){
     if (!pendingPiPRefresh) return;
@@ -303,13 +316,16 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (isMacDesktop()) return;
     if (!isPiPActive()) return;
 
-    // iPhone/iPadではPiPを閉じずに「リレイアウト刺激」だけ（再生継続を優先）
-    layoutNudge();
+    // iPhone/iPadでは再生を止めずに「リレイアウト刺激」＋PiP再宣言でサイズ更新を促す
+    forceVideoReflow();
 
     // webkit系が使える環境ではPiPの“再宣言”も試す（効く時だけ効く）
     if (hasWebkitPiP()){
       try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){}
-      setTimeout(()=>{ try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_{}); }, 80);
+      setTimeout(()=>{
+        try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){}
+        forceVideoReflow();
+      }, 80);
     }
   }
 
@@ -320,9 +336,21 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     } else {
       vid.style.aspectRatio = 'auto';
     }
+    scheduleVideoReflow(0);
     refreshPiPIfNeeded();
   });
-  vid.addEventListener('playing', refreshPiPIfNeeded);
+  vid.addEventListener('playing', ()=>{
+    scheduleVideoReflow(0);
+    refreshPiPIfNeeded();
+  });
+  vid.addEventListener('webkitbeginfullscreen', ()=> scheduleVideoReflow(50));
+  vid.addEventListener('webkitendfullscreen', ()=> scheduleVideoReflow(50));
+  document.addEventListener('fullscreenchange', ()=> scheduleVideoReflow(50));
+  window.addEventListener('orientationchange', ()=> scheduleVideoReflow(100));
+  window.addEventListener('resize', ()=> scheduleVideoReflow(50));
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', ()=> scheduleVideoReflow(50));
+  }
 
   function showPlayerFor(ext){
     const isVideo = videoExts.has(ext);
@@ -443,6 +471,8 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   function prepareIndex(fileIndex){
     if (fileIndex == null || fileIndex < 0 || fileIndex >= files.length) return;
+
+    if (isPiPActive() && !isMacDesktop()) markPiPRefresh();
 
     nowIndex = fileIndex;
     pos = order.indexOf(nowIndex);
