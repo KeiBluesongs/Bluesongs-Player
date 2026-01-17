@@ -309,7 +309,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     // webkit系が使える環境ではPiPの“再宣言”も試す（効く時だけ効く）
     if (hasWebkitPiP()){
       try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){}
-      setTimeout(()=>{ try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_{}); }, 80);
+      setTimeout(()=>{ try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){ }; }, 80);
     }
   }
 
