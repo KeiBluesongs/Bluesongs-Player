@@ -14,7 +14,6 @@ input[type=file]{display:none}
 input[type=text]{min-width:220px;flex:1}
 small{opacity:.8}
 video,audio{width:100%;margin-top:10px;background:#000}
-video{object-fit:contain;object-position:center;background:#000}
 #status{margin-top:8px;font-size:14px;opacity:.85}
 #plist{
   list-style:none;padding:0;margin:10px 0 0 0;border:1px solid #222;border-radius:10px;overflow:auto;
@@ -152,7 +151,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   const extsOK = new Set(['mp4','m4v','mov','mp3','m4a']);
   const videoExts = new Set(['mp4','m4v','mov']);
 
-  // ホーム画面アプリ（standalone）判定
+  // ★ホーム画面アプリ（standalone）判定
   function isStandalone() {
     return (window.navigator.standalone === true) ||
            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
@@ -176,9 +175,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   }
   function enabledBase(on){ btnPlay.disabled = !on; }
 
-  function keyLabel(f){
-    return (f.webkitRelativePath ? f.webkitRelativePath : f.name) || '';
-  }
   function keyOf(f){
     const rp = (chkSortPath.checked && f.webkitRelativePath) ? f.webkitRelativePath : f.name;
     return (rp || '').toLowerCase();
@@ -245,85 +241,6 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   });
   applyLoopOneToPlayers();
 
-  // --- PiPまわり（クリーン版） ---
-  const UA = navigator.userAgent || '';
-  function isMacDesktop(){
-    // iPhone/iPadは "Mobile" が入る。macOS Safariは入らない。
-    return /Macintosh/.test(UA) && !/Mobile/.test(UA);
-  }
-  function hasWebkitPiP(){
-    return (typeof vid.webkitSetPresentationMode === 'function');
-  }
-  function isPiPActive(){
-    return (document.pictureInPictureElement === vid) ||
-           (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture');
-  }
-  function tryExitPiP(){
-    try{
-      if (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture'){
-        vid.webkitSetPresentationMode('inline');
-        return true;
-      }
-      if (document.pictureInPictureElement){
-        document.exitPictureInPicture?.().catch(()=>{});
-        return true;
-      }
-    }catch(_){}
-    return false;
-  }
-  function tryEnterPiP(){
-    if (isStandalone()) return false;
-    if (vid.style.display === 'none') return false;
-
-    try{
-      if (hasWebkitPiP()){
-        vid.webkitSetPresentationMode('picture-in-picture');
-        return true;
-      }
-      if (document.pictureInPictureEnabled && typeof vid.requestPictureInPicture === 'function'){
-        vid.requestPictureInPicture().catch(()=>{});
-        return true;
-      }
-    }catch(_){}
-    return false;
-  }
-
-  // iPhoneの「次へでPiPが拡大」対策（実験）：ユーザー操作で切替した時だけ、軽いレイアウト刺激を入れる
-  let pendingPiPRefresh = false;
-  function markPiPRefresh(){ pendingPiPRefresh = true; }
-  function layoutNudge(){
-    // “ピンチで直る”の再現を狙って、極小のスタイル変更でリレイアウトを誘発（見た目はほぼ変わらない）
-    const t = vid.style.transform;
-    vid.style.transform = 'scale(0.9999)';
-    requestAnimationFrame(()=>{ vid.style.transform = t || ''; });
-  }
-  function refreshPiPIfNeeded(){
-    if (!pendingPiPRefresh) return;
-    pendingPiPRefresh = false;
-    if (isMacDesktop()) return;
-    if (!isPiPActive()) return;
-
-    // iPhone/iPadではPiPを閉じずに「リレイアウト刺激」だけ（再生継続を優先）
-    layoutNudge();
-
-    // webkit系が使える環境ではPiPの“再宣言”も試す（効く時だけ効く）
-    if (hasWebkitPiP()){
-      try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){}
-      setTimeout(()=>{ try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_{}); }, 80);
-    }
-  }
-
-  // ソース切替後にメタデータが入ったタイミングで見た目/比率を安定化
-  vid.addEventListener('loadedmetadata', ()=>{
-    if (vid.videoWidth && vid.videoHeight){
-      vid.style.aspectRatio = `${vid.videoWidth}/${vid.videoHeight}`;
-    } else {
-      vid.style.aspectRatio = 'auto';
-    }
-    refreshPiPIfNeeded();
-  });
-  vid.addEventListener('playing', refreshPiPIfNeeded);
-
   function showPlayerFor(ext){
     const isVideo = videoExts.has(ext);
     vid.style.display = isVideo ? '' : 'none';
@@ -336,25 +253,28 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     // 曲切替時もloop状態を確実に反映
     applyLoopOneToPlayers();
 
-    // PiPボタン状態
+    // ★PiPはstandaloneでは案内運用にする（ボタンは押せるようにしておく）
     if (!isVideo) {
-      btnPiP.disabled = true;
+      btnPiP.disabled = true;           // 音声はPiPなし
       btnPiP.textContent = 'PiP（動画）';
       return player;
     }
 
     if (isStandalone()) {
+      // standaloneではOS制限で失敗しやすいので“案内ボタン”として活かす
       btnPiP.disabled = false;
       btnPiP.textContent = 'PiP（Safari）';
       return player;
     }
 
+    // Safari通常タブなら従来どおり判定
     const pipCapable = (
       (document.pictureInPictureEnabled && typeof vid.requestPictureInPicture === 'function') ||
       (typeof vid.webkitSetPresentationMode === 'function')
     );
     btnPiP.disabled = !pipCapable;
     btnPiP.textContent = 'PiP（動画）';
+
     return player;
   }
 
@@ -366,7 +286,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       base = Array.from({length: files.length}, (_,i)=>i);
     } else {
       for (let i=0;i<files.length;i++){
-        const label = keyLabel(files[i]).toLowerCase();
+        const label = (files[i].webkitRelativePath ? files[i].webkitRelativePath : files[i].name).toLowerCase();
         if (label.includes(q)) base.push(i);
       }
     }
@@ -433,7 +353,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     plist.innerHTML = '';
     files.forEach((f,i)=>{
       const li = document.createElement('li');
-      li.textContent = keyLabel(f);
+      li.textContent = f.webkitRelativePath ? f.webkitRelativePath : f.name;
       li.dataset.i = String(i);
       li.addEventListener('click', ()=> selectAndPlay(i));
       plist.appendChild(li);
@@ -450,27 +370,11 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     const f = files[nowIndex];
     const ext = extOf(f.name);
 
-    // 以前のsrcを明示的にクリア（iOSのフォルダ選択でネイティブ▶︎が別項目になる対策）
-    try{
-      vid.pause(); aud.pause();
-      vid.removeAttribute('src'); aud.removeAttribute('src');
-      vid.load(); aud.load();
-    }catch(_){}
-
     revoke();
     url = URL.createObjectURL(f);
 
-    // ソース切替直後は一旦リセット（loadedmetadataで設定し直す）
-    vid.style.aspectRatio = 'auto';
-
     const player = showPlayerFor(ext);
     player.src = url;
-
-    // iOS Safari対策：明示的にロードして、ネイティブ▶︎で別項目が再生されるのを抑える
-    try{ player.load(); }catch(_){}
-
-    // 念のため先頭へ
-    try{ player.currentTime = 0; }catch(_){}
 
     updateStatus();
     applyFilterUI();
@@ -484,69 +388,86 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     player.play().catch(()=>{});
   }
 
-  function next(userGesture=false){
-    if (!order.length) return;
-
-    const wasPiP = isPiPActive();
-
-    // Macだけ「抜け→入り直し」でPiP表示崩れを回避
-    if (wasPiP && userGesture && isMacDesktop()) tryExitPiP();
-
-    // iPhoneはPiPを閉じない（再生継続を優先）。表示崩れ対策は“刺激”だけ予約する
-    if (wasPiP && userGesture && !isMacDesktop()) markPiPRefresh();
-
-    if (pos < 0){
-      prepareIndex(order[0]); playNow();
-    } else if (pos+1 < order.length){
-      prepareIndex(order[pos+1]); playNow();
-    } else if (chkLoop.checked){
-      prepareIndex(order[0]); playNow();
-    }
-
-    if (wasPiP && userGesture && isMacDesktop()){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
+  // --- PiPまわり：Mac Safariで「次へ」に行くとPiPが拡大/崩れる対策（手動操作時だけ） ---
+  const UA = navigator.userAgent || '';
+  function isMacDesktop(){
+    // iPhone/iPadは "Mobile" が入る。macOS Safariは入らない。
+    return /Macintosh/.test(UA) && !/Mobile/.test(UA);
   }
 
-  function prev(userGesture=false){
-    if (!order.length) return;
+  function hasWebkitPiP(){
+    return (typeof vid.webkitSetPresentationMode === 'function');
+  }
+  function isPiPActive(){
+    return (document.pictureInPictureElement === vid) ||
+           (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture');
+  }
+  function tryExitPiP(){
+    try{
+      // Safariはwebkit系が同期的に効くことが多い
+      if (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture'){
+        vid.webkitSetPresentationMode('inline');
+        return true;
+      }
+      if (document.pictureInPictureElement){
+        document.exitPictureInPicture?.().catch(()=>{});
+        return true;
+      }
+    }catch(_){}
+    return false;
+  }
+  function tryEnterPiP(){
+    // iPhoneホーム画面版は案内運用なのでここでは触らない
+    if (isStandalone()) return false;
+    // 動画以外は対象外
+    if (vid.style.display === 'none') return false;
 
-    const wasPiP = isPiPActive();
-
-    if (wasPiP && userGesture && isMacDesktop()) tryExitPiP();
-    if (wasPiP && userGesture && !isMacDesktop()) markPiPRefresh();
-
-    if (pos < 0){
-      prepareIndex(order[0]); playNow();
-    } else if (pos-1 >= 0){
-      prepareIndex(order[pos-1]); playNow();
-    } else if (chkLoop.checked){
-      prepareIndex(order[order.length-1]); playNow();
-    }
-
-    if (wasPiP && userGesture && isMacDesktop()){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
+    try{
+      // Safariはwebkit系を優先（同期的に動きやすい）
+      if (hasWebkitPiP()){
+        vid.webkitSetPresentationMode('picture-in-picture');
+        return true;
+      }
+      if (document.pictureInPictureEnabled && vid.requestPictureInPicture){
+        vid.requestPictureInPicture().catch(()=>{});
+        return true;
+      }
+    }catch(_){}
+    return false;
   }
 
-  // リストタップで「選択→即再生」
+  // リストタップで「選択→即再生」したい（ファイル選択直後は自動再生しないまま）
   function selectAndPlay(i){
     const wasPiP = isPiPActive();
+
+    // macOS Safariだけ：PiP表示が拡大/崩れるのを避けるため、一度PiPを抜けて入り直す
     if (wasPiP && isMacDesktop()) tryExitPiP();
-    if (wasPiP && !isMacDesktop()) markPiPRefresh();
 
     prepareIndex(i);
     playNow();
+
+    // macOS Safariだけ：PiPに戻す（iPhone/iPadはPiP継続を優先して触らない）
+    if (wasPiP && isMacDesktop()){
+      tryEnterPiP();
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
+  }
+
+  function next(){
+    if (!order.length) return;
+
+    const wasPiP = isPiPActive();
+    if (wasPiP && isMacDesktop()) tryExitPiP();
+
+    if (pos < 0){
+      prepareIndex(order[0]); playNow(); return;
+    }
+    if (pos+1 < order.length){ prepareIndex(order[pos+1]); playNow(); }
+    else if (chkLoop.checked){ prepareIndex(order[0]); playNow(); }
 
     if (wasPiP && isMacDesktop()){
       tryEnterPiP();
@@ -558,10 +479,33 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     }
   }
 
-  function onEnded(){
-    if (chkLoopOne.checked) return;
-    if (chkAutoNext.checked) next(false); // 自動連続再生：ユーザー操作ではない扱い
+  function prev(){
+    if (!order.length) return;
+
+    const wasPiP = isPiPActive();
+    if (wasPiP && isMacDesktop()) tryExitPiP();
+
+    if (pos < 0){
+      prepareIndex(order[0]); playNow(); return;
+    }
+    if (pos-1 >= 0){ prepareIndex(order[pos-1]); playNow(); }
+    else if (chkLoop.checked){ prepareIndex(order[order.length-1]); playNow(); }
+
+    if (wasPiP && isMacDesktop()){
+      tryEnterPiP();
+      const once = () => {
+        vid.removeEventListener('playing', once);
+        if (!isPiPActive()) tryEnterPiP();
+      };
+      vid.addEventListener('playing', once);
+    }
   }
+
+function onEnded(){
+    if (chkLoopOne.checked) return;
+    if (chkAutoNext.checked) next();
+  }
+
   vid.addEventListener('ended', onEnded);
   aud.addEventListener('ended', onEnded);
 
@@ -579,40 +523,34 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     else player.pause();
   });
 
-  btnNext.addEventListener('click', ()=> next(true));
-  btnPrev.addEventListener('click', ()=> prev(true));
+  btnNext.addEventListener('click', next);
+  btnPrev.addEventListener('click', prev);
 
-  btnPiP.addEventListener('click', ()=>{
-    // standaloneは案内運用
+  btnPiP.addEventListener('click', async ()=>{
+    // ★ホーム画面アプリ化ではPiP制限があるので案内にする
     if (isStandalone()) {
-      alert('ホーム画面アプリ版ではPiPが制限されることがあります。\nPiPしたい時はSafariで同じURLを開いて、そこでPiPを押してね。');
+      alert('ホーム画面アプリ版ではPiPが制限されます。\\nPiPしたい時はSafariで同じURLを開いて、そこでPiPを押してね。\\n（Safari側のブックマークから開くのが確実）');
       return;
     }
-    if (vid.style.display === 'none') return;
 
-    // すでにPiP中なら終了（トグル）
     try{
-      if (document.pictureInPictureElement === vid){
-        document.exitPictureInPicture?.().catch(()=>{});
-        return;
+      if (document.pictureInPictureEnabled && vid.requestPictureInPicture){
+        await vid.requestPictureInPicture(); return;
       }
-      if (hasWebkitPiP() && vid.webkitPresentationMode === 'picture-in-picture'){
-        vid.webkitSetPresentationMode('inline');
-        return;
+      if (vid.webkitSetPresentationMode){
+        vid.webkitSetPresentationMode('picture-in-picture'); return;
       }
-    }catch(_){}
-
-    // クリックの流れの中で再生を蹴る（成功率UP）
-    if (vid.paused) vid.play().catch(()=>{});
-    const ok = tryEnterPiP();
-    if (!ok) alert('この環境ではPiPが使えないみたい。');
+      alert('この環境ではPiPが使えないみたい。');
+    }catch(_){
+      alert('PiP開始に失敗。再生中に押すと成功しやすいよ。');
+    }
   });
 
   function setFiles(inputFiles){
     const arr = Array.from(inputFiles||[]);
     const ok = arr.filter(f=>{
       const ext = extOf(f.name);
-      return extsOK.has(ext) || (f.type && (f.type.startsWith('video/') || f.type.startsWith('audio/')));
+      return extsOK.has(ext) || f.type.startsWith('video/') || f.type.startsWith('audio/');
     });
 
     files = sortFilesStable(ok);
@@ -634,7 +572,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     rebuildQueue();
 
     if (order.length){
-      prepareIndex(order[0]); // 自動再生しない
+      prepareIndex(order[0]);
     } else {
       nowIndex = null;
       status.textContent='検索ヒット 0件（条件を変えてね）';
@@ -646,20 +584,15 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   pickFolder.addEventListener('change', e=>setFiles(e.target.files));
 
   chkShuffle.addEventListener('change', rebuildQueue);
-
   chkSortPath.addEventListener('change', ()=>{
     if(!files.length) return;
 
-    // フォルダ選択もあるので、nameだけでなく表示ラベルで追跡
-    const keepKey = (nowIndex != null) ? keyLabel(files[nowIndex]) : null;
-
+    const keepName = (nowIndex != null) ? files[nowIndex].name : null;
     files = sortFilesStable(files);
-
-    if (keepKey){
-      const k = files.findIndex(f => keyLabel(f) === keepKey);
+    if (keepName){
+      const k = files.findIndex(f => f.name === keepName);
       nowIndex = (k >= 0) ? k : nowIndex;
     }
-
     renderList();
     rebuildQueue();
   });
@@ -669,6 +602,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   chkFollow.addEventListener('change', ()=> highlightCurrent(true));
 
+  // ✅ 再生速度ボタン修正版（rate未定義＆boolean渡しを解消）
   document.querySelectorAll('.spd').forEach(b=>{
     b.addEventListener('click', () => setSpeed(Number(b.dataset.rate)));
   });
