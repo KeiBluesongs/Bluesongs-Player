@@ -288,7 +288,9 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     return false;
   }
 
-  // iPhoneの「次へでPiPが拡大」対策（実験）：ユーザー操作で切替した時だけ、軽いレイアウト刺激を入れる
+  // iPhoneの「次へでPiPが拡大」対策：
+  // PiP中にsrcを差し替えると、iOS SafariがPiPの描画サイズを更新しないことがある。
+  // loadedmetadata/playingのタイミングで軽い再描画刺激＋PiP再宣言を行い、表示バグを回避する。
   let pendingPiPRefresh = false;
   function markPiPRefresh(){ pendingPiPRefresh = true; }
   function layoutNudge(){
@@ -303,13 +305,13 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     if (isMacDesktop()) return;
     if (!isPiPActive()) return;
 
-    // iPhone/iPadではPiPを閉じずに「リレイアウト刺激」だけ（再生継続を優先）
+    // iPhone/iPadでは再生を止めずに「リレイアウト刺激」＋PiP再宣言でサイズ更新を促す
     layoutNudge();
 
     // webkit系が使える環境ではPiPの“再宣言”も試す（効く時だけ効く）
     if (hasWebkitPiP()){
       try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){}
-      setTimeout(()=>{ try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_{}); }, 80);
+      setTimeout(()=>{ try{ vid.webkitSetPresentationMode('picture-in-picture'); }catch(_){}; }, 80);
     }
   }
 
@@ -317,8 +319,13 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   vid.addEventListener('loadedmetadata', ()=>{
     if (vid.videoWidth && vid.videoHeight){
       vid.style.aspectRatio = `${vid.videoWidth}/${vid.videoHeight}`;
+      // iOS SafariのPiPでサイズがズレる場合があるため、属性でも明示してリサイズを促す
+      vid.width = vid.videoWidth;
+      vid.height = vid.videoHeight;
     } else {
       vid.style.aspectRatio = 'auto';
+      vid.removeAttribute('width');
+      vid.removeAttribute('height');
     }
     refreshPiPIfNeeded();
   });
@@ -443,6 +450,8 @@ details.ctrlpanel[open]{padding-bottom:12px;}
 
   function prepareIndex(fileIndex){
     if (fileIndex == null || fileIndex < 0 || fileIndex >= files.length) return;
+
+    if (isPiPActive() && !isMacDesktop()) markPiPRefresh();
 
     nowIndex = fileIndex;
     pos = order.indexOf(nowIndex);
