@@ -333,8 +333,13 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   vid.addEventListener('loadedmetadata', ()=>{
     if (vid.videoWidth && vid.videoHeight){
       vid.style.aspectRatio = `${vid.videoWidth}/${vid.videoHeight}`;
+      // iOS SafariのPiPでサイズがズレる場合があるため、属性でも明示してリサイズを促す
+      vid.width = vid.videoWidth;
+      vid.height = vid.videoHeight;
     } else {
       vid.style.aspectRatio = 'auto';
+      vid.removeAttribute('width');
+      vid.removeAttribute('height');
     }
     scheduleVideoReflow(0);
     refreshPiPIfNeeded();
