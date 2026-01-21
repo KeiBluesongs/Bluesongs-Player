@@ -484,16 +484,35 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     player.play().catch(()=>{});
   }
 
+  function handlePiPBeforeChange(){
+    const wasPiP = isPiPActive();
+    if (!wasPiP) return false;
+
+    // Macは必ず「抜け→入り直し」でPiP表示崩れを回避
+    if (isMacDesktop()) {
+      tryExitPiP();
+      return true;
+    }
+
+    // iPhone/iPadはPiPを閉じない（再生継続を優先）。表示崩れ対策は“刺激”だけ予約する
+    markPiPRefresh();
+    return true;
+  }
+
+  function restorePiPAfterChange(wasPiP){
+    if (!wasPiP || !isMacDesktop()) return;
+    tryEnterPiP();
+    const once = () => {
+      vid.removeEventListener('playing', once);
+      if (!isPiPActive()) tryEnterPiP();
+    };
+    vid.addEventListener('playing', once);
+  }
+
   function next(userGesture=false){
     if (!order.length) return;
 
-    const wasPiP = isPiPActive();
-
-    // Macだけ「抜け→入り直し」でPiP表示崩れを回避
-    if (wasPiP && userGesture && isMacDesktop()) tryExitPiP();
-
-    // iPhoneはPiPを閉じない（再生継続を優先）。表示崩れ対策は“刺激”だけ予約する
-    if (wasPiP && userGesture && !isMacDesktop()) markPiPRefresh();
+    const wasPiP = handlePiPBeforeChange();
 
     if (pos < 0){
       prepareIndex(order[0]); playNow();
@@ -503,23 +522,13 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       prepareIndex(order[0]); playNow();
     }
 
-    if (wasPiP && userGesture && isMacDesktop()){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
+    restorePiPAfterChange(wasPiP);
   }
 
   function prev(userGesture=false){
     if (!order.length) return;
 
-    const wasPiP = isPiPActive();
-
-    if (wasPiP && userGesture && isMacDesktop()) tryExitPiP();
-    if (wasPiP && userGesture && !isMacDesktop()) markPiPRefresh();
+    const wasPiP = handlePiPBeforeChange();
 
     if (pos < 0){
       prepareIndex(order[0]); playNow();
@@ -529,33 +538,17 @@ details.ctrlpanel[open]{padding-bottom:12px;}
       prepareIndex(order[order.length-1]); playNow();
     }
 
-    if (wasPiP && userGesture && isMacDesktop()){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
+    restorePiPAfterChange(wasPiP);
   }
 
   // リストタップで「選択→即再生」
   function selectAndPlay(i){
-    const wasPiP = isPiPActive();
-    if (wasPiP && isMacDesktop()) tryExitPiP();
-    if (wasPiP && !isMacDesktop()) markPiPRefresh();
+    const wasPiP = handlePiPBeforeChange();
 
     prepareIndex(i);
     playNow();
 
-    if (wasPiP && isMacDesktop()){
-      tryEnterPiP();
-      const once = () => {
-        vid.removeEventListener('playing', once);
-        if (!isPiPActive()) tryEnterPiP();
-      };
-      vid.addEventListener('playing', once);
-    }
+    restorePiPAfterChange(wasPiP);
   }
 
   function onEnded(){
