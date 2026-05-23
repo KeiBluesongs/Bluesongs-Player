@@ -44,6 +44,7 @@ details.ctrlpanel > summary{
 }
 details.ctrlpanel > summary::-webkit-details-marker{display:none;}
 details.ctrlpanel[open]{padding-bottom:12px;}
+body.wide .wrap{max-width:none}
 </style></head><body>
 <div class="wrap">
 
@@ -94,6 +95,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   <div class="row ctrl" style="margin-top:10px">
     <button id="play" disabled>再生/停止</button>
     <button id="pip"  disabled>PiP（動画）</button>
+    <button id="wide">幅を広げる</button>
     <button id="prev" disabled>前へ</button>
     <button id="next" disabled>次へ</button>
   </div>
@@ -128,6 +130,7 @@ details.ctrlpanel[open]{padding-bottom:12px;}
   const btnPrev = document.getElementById('prev');
   const btnNext = document.getElementById('next');
   const btnPiP  = document.getElementById('pip');
+  const btnWide = document.getElementById('wide');
 
   const chkShuffle = document.getElementById('shuffle');
   const chkLoop    = document.getElementById('loop');
@@ -157,6 +160,28 @@ details.ctrlpanel[open]{padding-bottom:12px;}
     return (window.navigator.standalone === true) ||
            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
   }
+
+// 画面幅トグル（wrapのmax-widthを解除してブラウザ横幅まで広げる）
+const WIDE_KEY = 'bluesongs_wide';
+function applyWideMode(on){
+  document.body.classList.toggle('wide', !!on);
+  if (btnWide) btnWide.textContent = on ? '幅を戻す' : '幅を広げる';
+  try{ localStorage.setItem(WIDE_KEY, on ? '1' : '0'); }catch(_){}
+}
+
+// 初期状態（保存があれば復元）
+(() => {
+  let on = false;
+  try{ on = localStorage.getItem(WIDE_KEY) === '1'; }catch(_){}
+  applyWideMode(on);
+})();
+
+if (btnWide){
+  btnWide.addEventListener('click', ()=>{
+    applyWideMode(!document.body.classList.contains('wide'));
+  });
+}
+
 
   function closePanelOnPlay(){
     if (panel) panel.open = false;
